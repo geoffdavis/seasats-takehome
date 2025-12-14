@@ -1,0 +1,17 @@
+# Terraform files
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+*.tfvars
+!*.tfvars.example
+
+# SSH keys
+*.pem
+*.pub
+vpn_server_key
+vpn_server_key.pub
+
+# VPN client configs
+client.conf
+*.ovpn

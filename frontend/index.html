@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seasats API Metrics</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .config-section {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+
+        .config-section h2 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #5568d3;
+        }
+
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .charts {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 30px;
+            margin-top: 30px;
+        }
+
+        .chart-container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+        }
+
+        .chart-container h2 {
+            margin-bottom: 20px;
+            color: #333;
+            text-align: center;
+        }
+
+        .info-box {
+            background: #e8f4f8;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+
+        .info-box p {
+            margin: 5px 0;
+            color: #555;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: white;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Seasats API Metrics Dashboard</h1>
+
+        <div class="config-section">
+            <h2>Configuration</h2>
+            <div class="info-box">
+                <p><strong>Note:</strong> Enter your API endpoint URLs below.</p>
+                <p>The /secure-status endpoint will only be accessible when connected to the VPN.</p>
+            </div>
+
+            <div class="form-group">
+                <label for="apiUrl">Public API URL (for /status and /metrics):</label>
+                <input type="text" id="apiUrl" placeholder="http://your-alb-dns-name.region.elb.amazonaws.com" value="">
+            </div>
+
+            <div class="form-group">
+                <label for="privateApiUrl">Private API URL (for /secure-status, VPN only):</label>
+                <input type="text" id="privateApiUrl" placeholder="http://private-api.seasats.local:5000" value="http://private-api.seasats.local:5000">
+            </div>
+
+            <button onclick="saveConfig()">Save & Refresh Data</button>
+
+            <div id="status" class="status" style="display: none;"></div>
+        </div>
+
+        <div class="charts">
+            <div class="chart-container">
+                <h2>/status Endpoint Hits</h2>
+                <canvas id="statusChart"></canvas>
+            </div>
+
+            <div class="chart-container">
+                <h2>/secure-status Endpoint Hits (VPN Required)</h2>
+                <canvas id="secureStatusChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let statusChart;
+        let secureStatusChart;
+        let apiUrl = localStorage.getItem('apiUrl') || '';
+        let privateApiUrl = localStorage.getItem('privateApiUrl') || 'http://private-api.seasats.local:5000';
+
+        // Load saved config on page load
+        document.getElementById('apiUrl').value = apiUrl;
+        document.getElementById('privateApiUrl').value = privateApiUrl;
+
+        function saveConfig() {
+            apiUrl = document.getElementById('apiUrl').value.trim();
+            privateApiUrl = document.getElementById('privateApiUrl').value.trim();
+
+            localStorage.setItem('apiUrl', apiUrl);
+            localStorage.setItem('privateApiUrl', privateApiUrl);
+
+            showStatus('Configuration saved! Refreshing data...', 'success');
+
+            setTimeout(() => {
+                fetchMetrics();
+            }, 1000);
+        }
+
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+            statusDiv.style.display = 'block';
+
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        async function fetchMetrics() {
+            if (!apiUrl) {
+                showStatus('Please configure the API URL first', 'error');
+                return;
+            }
+
+            try {
+                // Fetch metrics from public API (for /status data)
+                const publicResponse = await fetch(`${apiUrl}/metrics`);
+                if (!publicResponse.ok) {
+                    throw new Error(`Public API error! status: ${publicResponse.status}`);
+                }
+                const publicData = await publicResponse.json();
+
+                // Try to fetch metrics from private API (for /secure-status data)
+                // This will only work if connected to VPN
+                let privateData = { status: [], secure_status: [] };
+                try {
+                    const privateResponse = await fetch(`${privateApiUrl}/metrics`);
+                    if (privateResponse.ok) {
+                        privateData = await privateResponse.json();
+                    }
+                } catch (vpnError) {
+                    console.log('VPN endpoint not accessible (not connected to VPN):', vpnError.message);
+                }
+
+                // Combine data: public endpoint provides status data, private endpoint provides secure-status data
+                const combinedData = {
+                    status: publicData.status || [],
+                    secure_status: privateData.secure_status || []
+                };
+
+                updateCharts(combinedData);
+                showStatus('Data refreshed successfully', 'success');
+            } catch (error) {
+                console.error('Error fetching metrics:', error);
+                showStatus(`Error fetching data: ${error.message}`, 'error');
+            }
+        }
+
+        function updateCharts(data) {
+            // Process status data
+            const statusData = data.status || [];
+            const secureStatusData = data.secure_status || [];
+
+            // Format data for charts
+            const statusLabels = statusData.map(item => new Date(item.timestamp * 1000).toLocaleTimeString());
+            const statusCounts = statusData.map(item => item.count);
+
+            const secureStatusLabels = secureStatusData.map(item => new Date(item.timestamp * 1000).toLocaleTimeString());
+            const secureStatusCounts = secureStatusData.map(item => item.count);
+
+            // Update status chart
+            if (statusChart) {
+                statusChart.destroy();
+            }
+
+            const statusCtx = document.getElementById('statusChart').getContext('2d');
+            statusChart = new Chart(statusCtx, {
+                type: 'line',
+                data: {
+                    labels: statusLabels,
+                    datasets: [{
+                        label: 'Hit Count',
+                        data: statusCounts,
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Update secure status chart
+            if (secureStatusChart) {
+                secureStatusChart.destroy();
+            }
+
+            const secureStatusCtx = document.getElementById('secureStatusChart').getContext('2d');
+            secureStatusChart = new Chart(secureStatusCtx, {
+                type: 'line',
+                data: {
+                    labels: secureStatusLabels,
+                    datasets: [{
+                        label: 'Hit Count',
+                        data: secureStatusCounts,
+                        borderColor: '#764ba2',
+                        backgroundColor: 'rgba(118, 75, 162, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Auto-refresh every 30 seconds
+        setInterval(() => {
+            if (apiUrl) {
+                fetchMetrics();
+            }
+        }, 30000);
+
+        // Initial load
+        if (apiUrl) {
+            fetchMetrics();
+        }
+    </script>
+</body>
+</html>

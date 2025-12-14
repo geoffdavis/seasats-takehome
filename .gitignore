@@ -1,0 +1,39 @@
+# Terraform
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/*.tfvars
+!terraform/*.tfvars.example
+terraform/vpn_server_key
+terraform/vpn_server_key.pub
+
+# VPN configs
+client.conf
+*.ovpn
+
+# Python
+api/__pycache__/
+api/*.pyc
+api/*.pyo
+api/*.pyd
+api/.Python
+api/*.so
+api/.env
+api/.venv
+api/venv/
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Outputs
+outputs.txt
