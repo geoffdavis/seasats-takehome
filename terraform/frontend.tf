@@ -54,6 +54,7 @@ resource "aws_cloudfront_distribution" "frontend" {
   enabled             = true
   default_root_object = "index.html"
   price_class         = "PriceClass_100"
+  comment             = "Redirects CloudFront domain to custom domain"
 
   origin {
     domain_name = aws_s3_bucket_website_configuration.frontend.website_endpoint
@@ -91,11 +92,17 @@ resource "aws_cloudfront_distribution" "frontend" {
     }
   }
 
+  aliases = ["seasats.${var.domain_name}"]
+
   viewer_certificate {
-    cloudfront_default_certificate = true
+    acm_certificate_arn      = aws_acm_certificate_validation.cloudfront.certificate_arn
+    ssl_support_method       = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021"
   }
 
   tags = local.common_tags
+
+  depends_on = [aws_acm_certificate_validation.cloudfront]
 }
 
 # Data source for current AWS account

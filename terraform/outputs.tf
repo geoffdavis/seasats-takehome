@@ -4,18 +4,23 @@ output "aws_region" {
 }
 
 output "public_api_url" {
-  description = "URL for the public API (HTTPS with self-signed certificate)"
-  value       = "https://${aws_lb.public.dns_name}"
-}
-
-output "public_api_http_url" {
-  description = "HTTP URL for the public API (fallback)"
+  description = "URL for the public API (use this URL)"
   value       = "http://${aws_lb.public.dns_name}"
 }
 
+output "public_api_custom_domain" {
+  description = "Custom domain URL for the public API (available after cert validation)"
+  value       = "https://seasats-api.${var.domain_name}"
+}
+
 output "frontend_url" {
-  description = "URL for the frontend webpage (HTTPS for Private Network Access support)"
+  description = "URL for the frontend webpage (use this URL)"
   value       = "https://${aws_cloudfront_distribution.frontend.domain_name}"
+}
+
+output "frontend_custom_domain" {
+  description = "Custom domain URL for the frontend (available after cert validation)"
+  value       = "https://seasats.${var.domain_name}"
 }
 
 output "frontend_s3_url" {

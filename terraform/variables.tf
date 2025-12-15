@@ -21,3 +21,15 @@ variable "vpn_server_port" {
   type        = number
   default     = 51820
 }
+
+variable "cloudflare_api_token" {
+  description = "Cloudflare API token for DNS management"
+  type        = string
+  sensitive   = true
+}
+
+variable "domain_name" {
+  description = "Domain name for SSL certificates"
+  type        = string
+  default     = "geoffdavis.com"
+}
