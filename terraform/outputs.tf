@@ -4,13 +4,18 @@ output "aws_region" {
 }
 
 output "public_api_url" {
-  description = "URL for the public API"
+  description = "URL for the public API (HTTPS with self-signed certificate)"
+  value       = "https://${aws_lb.public.dns_name}"
+}
+
+output "public_api_http_url" {
+  description = "HTTP URL for the public API (fallback)"
   value       = "http://${aws_lb.public.dns_name}"
 }
 
 output "frontend_url" {
-  description = "URL for the frontend webpage (use HTTP to avoid mixed content errors)"
-  value       = "http://${aws_cloudfront_distribution.frontend.domain_name}"
+  description = "URL for the frontend webpage (HTTPS for Private Network Access support)"
+  value       = "https://${aws_cloudfront_distribution.frontend.domain_name}"
 }
 
 output "frontend_s3_url" {

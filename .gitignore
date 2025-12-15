@@ -37,3 +37,4 @@ api/venv/
 
 # Outputs
 outputs.txt
+terraform/certs/

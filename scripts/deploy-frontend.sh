@@ -41,16 +41,10 @@ echo -e "${YELLOW}Getting public API URL...${NC}"
 PUBLIC_API_URL=$(tofu output -raw public_api_url)
 echo "Public API URL: $PUBLIC_API_URL"
 
-# Get private API IP by querying DNS through the VPN
-echo -e "${YELLOW}Getting private API IP address...${NC}"
-PRIVATE_API_IP=$(dig @10.0.0.2 private-api.seasats.local +short | head -1)
-if [ -z "$PRIVATE_API_IP" ]; then
-    echo -e "${YELLOW}Warning: Could not resolve private API IP, using DNS name${NC}"
-    PRIVATE_API_URL="http://private-api.seasats.local:5000"
-else
-    echo "Private API IP: $PRIVATE_API_IP"
-    PRIVATE_API_URL="http://$PRIVATE_API_IP:5000"
-fi
+# Use DNS name for private API (requires VPN with DNS configuration)
+echo -e "${YELLOW}Using private API DNS name...${NC}"
+PRIVATE_API_URL="http://private-api.seasats.local:5000"
+echo "Private API URL: $PRIVATE_API_URL"
 
 # Create a temporary copy of index.html with API URLs injected
 echo -e "${YELLOW}Injecting API URLs into frontend...${NC}"
