@@ -65,11 +65,11 @@ resource "aws_security_group" "private_api" {
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description = "HTTP from VPN clients"
-    from_port   = 5000
-    to_port     = 5000
-    protocol    = "tcp"
-    cidr_blocks = [var.vpn_client_cidr]
+    description     = "HTTP from VPN server"
+    from_port       = 5000
+    to_port         = 5000
+    protocol        = "tcp"
+    security_groups = [aws_security_group.vpn_server.id]
   }
 
   egress {

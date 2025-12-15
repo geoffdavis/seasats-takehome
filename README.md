@@ -61,8 +61,28 @@ A proof-of-concept implementation featuring a public REST API, VPN-secured endpo
 1. **AWS Account** with appropriate credentials configured
 2. **AWS CLI** installed and configured
 3. **OpenTofu** or **Terraform** (>= 1.6)
-4. **Docker** for building container images
+4. **Docker** or **Podman** for building container images
 5. **WireGuard client** for VPN connectivity
+
+### Configuring AWS Region
+
+**Important:** The deployment scripts automatically read the AWS region from your Terraform configuration. You do NOT need to set the `AWS_REGION` environment variable.
+
+To deploy to a different region:
+
+1. Edit `terraform/terraform.tfvars` and change the `aws_region` value:
+
+   ```hcl
+   aws_region = "us-west-2"  # Change from default us-east-1
+   ```
+
+2. The deployment scripts will automatically detect and use this region from Terraform outputs.
+
+If you prefer to override this behavior, you can still set the `AWS_REGION` environment variable:
+
+```bash
+export AWS_REGION=us-west-2
+```
 
 ### Step 1: Deploy Infrastructure
 
@@ -72,6 +92,11 @@ cd terraform
 
 # Generate SSH key for VPN server
 ssh-keygen -t rsa -b 4096 -f vpn_server_key -N ""
+
+# Copy and customize variables (IMPORTANT: Set your desired AWS region here)
+cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars and change aws_region if needed (default: us-east-1)
+# Example: aws_region = "us-west-2"
 
 # Initialize Terraform
 tofu init
@@ -94,6 +119,8 @@ tofu output > ../outputs.txt
 
 ### Step 2: Build and Deploy API Container
 
+**Note:** The deployment script automatically detects and uses either Podman or Docker. You can also run these commands manually:
+
 ```bash
 # Navigate to api directory
 cd ../api
@@ -102,17 +129,23 @@ cd ../api
 ECR_REPO=$(cd ../terraform && tofu output -raw ecr_repository_url)
 AWS_REGION="us-east-1"  # or your configured region
 
-# Authenticate Docker to ECR
-aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
+# Authenticate to ECR (use 'podman' or 'docker' based on what you have installed)
+aws ecr get-login-password --region $AWS_REGION | podman login --username AWS --password-stdin $ECR_REPO
 
-# Build the Docker image
-docker build -t seasats-api .
+# Build the container image
+podman build -t seasats-api .
 
 # Tag the image
-docker tag seasats-api:latest $ECR_REPO:latest
+podman tag seasats-api:latest $ECR_REPO:latest
 
 # Push to ECR
-docker push $ECR_REPO:latest
+podman push $ECR_REPO:latest
+```
+
+**Or simply use the deployment script** which handles container runtime detection automatically:
+
+```bash
+./scripts/deploy.sh
 ```
 
 ### Step 3: Update ECS Services

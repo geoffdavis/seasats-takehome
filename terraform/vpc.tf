@@ -97,6 +97,7 @@ resource "aws_route_table" "private" {
   })
 }
 
+
 # Route Table Associations
 resource "aws_route_table_association" "public" {
   count          = 2

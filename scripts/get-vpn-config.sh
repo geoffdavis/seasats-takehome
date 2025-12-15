@@ -47,7 +47,7 @@ echo
 
 # Wait for WireGuard to be configured
 echo -e "${YELLOW}Waiting for WireGuard configuration to be ready...${NC}"
-until ssh -i vpn_server_key -o StrictHostKeyChecking=no ubuntu@$VPN_IP "test -f /root/client.conf" 2>/dev/null; do
+until ssh -i vpn_server_key -o StrictHostKeyChecking=no ubuntu@$VPN_IP "sudo test -f /root/client.conf" 2>/dev/null; do
     echo -n "."
     sleep 5
 done

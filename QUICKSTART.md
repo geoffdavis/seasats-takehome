@@ -6,12 +6,18 @@ This guide will get you up and running quickly. For detailed documentation, see 
 
 - AWS account with credentials configured
 - OpenTofu or Terraform installed
-- Docker installed
+- Docker or Podman installed
 - AWS CLI installed
 
 ## 1. Deploy Infrastructure (5 minutes)
 
 ```bash
+# Set up AWS credentials (handles login if needed)
+eval $(./scripts/setup-aws-creds.sh)
+
+# IMPORTANT: After running eval, continue in the SAME terminal session.
+# Don't use && or open a new terminal - the credentials are in your current shell.
+
 # Navigate to terraform directory
 cd terraform
 
@@ -21,6 +27,10 @@ ssh-keygen -t rsa -b 4096 -f vpn_server_key -N ""
 # Copy example variables
 cp terraform.tfvars.example terraform.tfvars
 
+# OPTIONAL: Edit terraform.tfvars to change AWS region (default: us-east-1)
+# Example: Change aws_region = "us-east-1" to aws_region = "us-west-2"
+# The deployment scripts will automatically use the region from terraform.tfvars
+
 # Initialize and deploy
 tofu init
 tofu apply
@@ -28,6 +38,8 @@ tofu apply
 # Save important outputs
 tofu output > ../outputs.txt
 ```
+
+**Note**: If your credentials expire (after ~8 hours), run `aws login` and export credentials again.
 
 ## 2. Build and Deploy API (3 minutes)
 
@@ -112,6 +124,9 @@ sudo wg-quick down ./client.conf
 ## Cleanup
 
 ```bash
+# Ensure credentials are fresh (if needed)
+eval $(./scripts/setup-aws-creds.sh)
+
 cd terraform
 
 # Delete S3 bucket contents
@@ -123,6 +138,20 @@ tofu destroy
 ```
 
 ## Troubleshooting
+
+### AWS credentials expired
+
+If you see errors like "ExpiredToken" or "no valid credential sources found":
+
+```bash
+# Re-authenticate and export credentials
+eval $(./scripts/setup-aws-creds.sh)
+
+# Verify credentials are loaded
+aws sts get-caller-identity
+```
+
+**Note:** The credentials are set as environment variables in your current shell. If you open a new terminal or use `&&` to chain commands, you'll need to run `eval $(./scripts/setup-aws-creds.sh)` again in that new context.
 
 ### ECS tasks not starting
 Check CloudWatch logs:

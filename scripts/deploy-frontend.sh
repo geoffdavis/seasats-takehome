@@ -14,7 +14,14 @@ echo
 # Check prerequisites
 command -v aws >/dev/null 2>&1 || { echo -e "${RED}AWS CLI is required but not installed.${NC}" >&2; exit 1; }
 
-AWS_REGION=${AWS_REGION:-us-east-1}
+# Load AWS credentials if not already set
+if [ -z "$AWS_ACCESS_KEY_ID" ] || ! aws sts get-caller-identity &>/dev/null; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    echo -e "${YELLOW}Loading AWS credentials...${NC}"
+    eval "$("$SCRIPT_DIR/setup-aws-creds.sh")"
+fi
+
+AWS_REGION=${AWS_DEFAULT_REGION:-us-west-2}
 
 cd terraform
 
@@ -44,7 +51,7 @@ if [ -z "$DISTRIBUTION_ID" ]; then
 else
     echo "CloudFront Distribution: $DISTRIBUTION_ID"
     echo -e "${YELLOW}Creating CloudFront invalidation...${NC}"
-    aws cloudfront create-invalidation --distribution-id $DISTRIBUTION_ID --paths "/*" --region $AWS_REGION
+    aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths "/*" --region "$AWS_REGION"
 fi
 
 echo

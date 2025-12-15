@@ -1,3 +1,8 @@
+output "aws_region" {
+  description = "AWS region where resources are deployed"
+  value       = var.aws_region
+}
+
 output "public_api_url" {
   description = "URL for the public API"
   value       = "http://${aws_lb.public.dns_name}"
