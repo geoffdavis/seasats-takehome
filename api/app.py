@@ -2,11 +2,27 @@ import os
 import time
 import random
 from flask import Flask, jsonify
+from flask_cors import CORS
 import boto3
 from boto3.dynamodb.conditions import Key
 from decimal import Decimal
 
 app = Flask(__name__)
+# Enable CORS with support for private network access
+CORS(app, resources={
+    r"/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type"],
+        "expose_headers": ["Access-Control-Allow-Private-Network"],
+    }
+})
+
+# Add middleware to handle private network access preflight
+@app.after_request
+def after_request(response):
+    response.headers['Access-Control-Allow-Private-Network'] = 'true'
+    return response
 
 # Configuration from environment variables
 DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE', 'seasats-takehome-api-metrics')

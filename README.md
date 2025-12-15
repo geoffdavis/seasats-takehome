@@ -292,16 +292,53 @@ curl http://private-api.seasats.local:5000/secure-status
 - Private API: Security group only allows traffic from VPN CIDR (10.0.100.0/24)
 - No application-level IP filtering needed
 
+## Known Issues and Workarounds
+
+### 1. Browser Private Network Access (CORS)
+**Issue**: Modern browsers (Chrome, Edge) block requests from public websites to private IP addresses due to Private Network Access policy.
+
+**Solution**: The API includes `Access-Control-Allow-Private-Network: true` header to explicitly allow this access.
+
+**Context**: The frontend (served from public S3/CloudFront) needs to access the private API (at `10.0.x.x`) when connected via VPN.
+
+### 2. macOS DNS Resolution for VPN
+**Issue**: Browsers on macOS don't respect WireGuard's DNS settings, so `private-api.seasats.local` doesn't resolve.
+
+**Solution**: The deployment script (`deploy-frontend.sh`) automatically resolves the private API IP and injects it directly into the frontend configuration, eliminating the need for DNS resolution in the browser.
+
+### 3. Mixed Content / HTTPS Redirect
+**Issue**: CloudFront serves content over HTTPS by default, but the ALB only supports HTTP, causing mixed content errors.
+
+**Workarounds**:
+- Use the S3 direct URL (shown in deployment output) which serves over HTTP only
+- CloudFront is configured with `viewer_protocol_policy = "allow-all"` but edge cache may take 10-15 minutes to propagate
+
+**Production Fix**: Add ACM certificate to ALB and enable HTTPS listener.
+
+### 4. ECS Container Architecture Mismatch
+**Issue**: Building containers on Apple Silicon (ARM64) creates images incompatible with Fargate (AMD64).
+
+**Solution**: The deployment script explicitly builds for `linux/amd64` platform:
+```bash
+podman build --platform linux/amd64 -t seasats-api .
+```
+
+### 5. VPN Server Security Group Configuration
+**Issue**: Initial configuration used VPN client CIDR (`10.0.100.0/24`) in security group, but traffic appeared as NAT'd from VPN server IP.
+
+**Solution**: Changed private API security group to allow traffic from VPN server security group instead of CIDR block.
+
 ## Assumptions Made
 
-1. **Single region deployment**: Deployed to us-east-1 for simplicity
-2. **No custom domain**: Using ALB DNS and CloudFront domain
-3. **No HTTPS on private API**: VPN provides encryption, HTTP within VPC
+1. **Single region deployment**: Deployed to us-west-2 for testing
+2. **No custom domain**: Using ALB DNS and CloudFront/S3 domains
+3. **No HTTPS on ALB**: HTTP only to avoid certificate management (VPN provides encryption for private API)
 4. **Single VPN client**: Only one client certificate generated
 5. **No authentication/authorization**: Public endpoints are truly public
 6. **Short data retention**: Storing last 24 hours of metrics
 7. **Minimal redundancy**: Single NAT Gateway (not HA for cost)
 8. **No monitoring/alerting**: CloudWatch logs available but no alarms configured
+9. **Frontend uses IP not DNS**: Private API accessed via IP address to work around browser DNS limitations
 
 ## What I Would Improve With More Time
 
@@ -317,6 +354,7 @@ curl http://private-api.seasats.local:5000/secure-status
    - Add authentication (Cognito or API keys)
    - Secrets management via AWS Secrets Manager
    - Enable VPC Flow Logs
+   - Enable HTTPS on ALB with ACM certificate (currently HTTP only, causing mixed content errors when CloudFront serves over HTTPS)
 
 3. **Monitoring & Observability**:
    - CloudWatch dashboards and alarms

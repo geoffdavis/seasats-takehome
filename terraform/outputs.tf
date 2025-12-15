@@ -9,8 +9,13 @@ output "public_api_url" {
 }
 
 output "frontend_url" {
-  description = "URL for the frontend webpage"
-  value       = "https://${aws_cloudfront_distribution.frontend.domain_name}"
+  description = "URL for the frontend webpage (use HTTP to avoid mixed content errors)"
+  value       = "http://${aws_cloudfront_distribution.frontend.domain_name}"
+}
+
+output "frontend_s3_url" {
+  description = "Direct S3 website URL (bypasses CloudFront, always HTTP)"
+  value       = "http://${aws_s3_bucket_website_configuration.frontend.website_endpoint}"
 }
 
 output "vpn_server_public_ip" {

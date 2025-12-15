@@ -36,10 +36,38 @@ fi
 
 echo "S3 Bucket: $S3_BUCKET"
 
+# Get public API URL from Terraform output
+echo -e "${YELLOW}Getting public API URL...${NC}"
+PUBLIC_API_URL=$(tofu output -raw public_api_url)
+echo "Public API URL: $PUBLIC_API_URL"
+
+# Get private API IP by querying DNS through the VPN
+echo -e "${YELLOW}Getting private API IP address...${NC}"
+PRIVATE_API_IP=$(dig @10.0.0.2 private-api.seasats.local +short | head -1)
+if [ -z "$PRIVATE_API_IP" ]; then
+    echo -e "${YELLOW}Warning: Could not resolve private API IP, using DNS name${NC}"
+    PRIVATE_API_URL="http://private-api.seasats.local:5000"
+else
+    echo "Private API IP: $PRIVATE_API_IP"
+    PRIVATE_API_URL="http://$PRIVATE_API_IP:5000"
+fi
+
+# Create a temporary copy of index.html with API URLs injected
+echo -e "${YELLOW}Injecting API URLs into frontend...${NC}"
+cd ../frontend
+cp index.html index.html.tmp
+# Use @ as delimiter to avoid issues with slashes and pipes in URLs
+sed -i.bak "s@let apiUrl = localStorage.getItem('apiUrl') || '';@let apiUrl = localStorage.getItem('apiUrl') || '$PUBLIC_API_URL';@" index.html.tmp
+sed -i.bak "s@let privateApiUrl = localStorage.getItem('privateApiUrl') || 'http://private-api.seasats.local:5000';@let privateApiUrl = localStorage.getItem('privateApiUrl') || '$PRIVATE_API_URL';@" index.html.tmp
+sed -i.bak "s@id=\"apiUrl\" placeholder=\"[^\"]*\" value=\"\">@id=\"apiUrl\" placeholder=\"http://your-alb-dns-name.region.elb.amazonaws.com\" value=\"$PUBLIC_API_URL\">@" index.html.tmp
+sed -i.bak "s@id=\"privateApiUrl\" placeholder=\"[^\"]*\" value=\"http://private-api.seasats.local:5000\">@id=\"privateApiUrl\" placeholder=\"http://private-api.seasats.local:5000\" value=\"$PRIVATE_API_URL\">@" index.html.tmp
+
 # Upload frontend files
 echo -e "${YELLOW}Uploading frontend files...${NC}"
-cd ../frontend
-aws s3 cp index.html s3://$S3_BUCKET/index.html --content-type "text/html"
+aws s3 cp index.html.tmp "s3://$S3_BUCKET/index.html" --content-type "text/html"
+
+# Clean up temporary file
+rm index.html.tmp index.html.tmp.bak
 
 # Get CloudFront distribution ID
 echo -e "${YELLOW}Getting CloudFront distribution ID...${NC}"
@@ -57,5 +85,8 @@ fi
 echo
 echo -e "${GREEN}Frontend deployed successfully!${NC}"
 echo
-echo "Frontend URL:"
-tofu output frontend_url
+echo "Frontend URLs:"
+echo "  CloudFront: $(tofu output -raw frontend_url 2>/dev/null || echo 'N/A')"
+echo "  S3 Direct:  http://${S3_BUCKET}.s3-website-${AWS_REGION}.amazonaws.com"
+echo
+echo -e "${YELLOW}Note: Use the S3 Direct URL to avoid HTTPS redirect issues${NC}"
