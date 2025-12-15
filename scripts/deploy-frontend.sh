@@ -38,23 +38,59 @@ echo "S3 Bucket: $S3_BUCKET"
 
 # Get public API URL from Terraform output
 echo -e "${YELLOW}Getting public API URL...${NC}"
-PUBLIC_API_URL=$(tofu output -raw public_api_url)
-echo "Public API URL: $PUBLIC_API_URL"
+# Get the ALB DNS name directly from Terraform state
+ALB_DNS=$(tofu state show aws_lb.public 2>/dev/null | grep "dns_name " | head -1 | awk '{print $3}' | tr -d '"')
+if [ -n "$ALB_DNS" ]; then
+    # Use HTTP for the ALB (HTTPS requires certificate validation)
+    PUBLIC_API_URL="http://$ALB_DNS"
+    echo "Using ALB URL: $PUBLIC_API_URL"
+else
+    echo -e "${RED}Could not find ALB DNS name${NC}"
+    exit 1
+fi
+
+# Check if custom domain is available and working
+CUSTOM_DOMAIN=$(tofu output -raw public_api_custom_domain 2>/dev/null || echo "")
+if [ -n "$CUSTOM_DOMAIN" ] && curl -sf "$CUSTOM_DOMAIN/health" &>/dev/null; then
+    PUBLIC_API_URL="$CUSTOM_DOMAIN"
+    echo "Custom domain is available, using: $PUBLIC_API_URL"
+fi
 
 # Use DNS name for private API (requires VPN with DNS configuration)
 echo -e "${YELLOW}Using private API DNS name...${NC}"
 PRIVATE_API_URL="http://private-api.seasats.local:5000"
 echo "Private API URL: $PRIVATE_API_URL"
 
+# Get the custom domain URL for redirect (prefer custom domain over CloudFront)
+REDIRECT_URL=$(tofu output -raw frontend_custom_domain 2>/dev/null || echo "")
+if [ -z "$REDIRECT_URL" ]; then
+    # Fallback to CloudFront URL if custom domain not available
+    REDIRECT_URL=$(tofu output -raw frontend_url 2>/dev/null || echo "")
+fi
+
 # Create a temporary copy of index.html with API URLs injected
 echo -e "${YELLOW}Injecting API URLs into frontend...${NC}"
 cd ../frontend
 cp index.html index.html.tmp
+
+# Add redirect to HTTPS custom domain if accessed via non-custom domain
+if [ -n "$REDIRECT_URL" ]; then
+    echo "Will redirect non-custom domains to: $REDIRECT_URL"
+    # Extract custom domain hostname from REDIRECT_URL
+    CUSTOM_DOMAIN_HOST=$(echo "$REDIRECT_URL" | sed 's|https://||' | sed 's|http://||' | cut -d'/' -f1)
+    # Add a script at the top of the body to redirect to custom domain
+    sed -i.bak "s@<body>@<body>\n<script>\n// Redirect S3 and CloudFront domains to custom domain\nif (window.location.hostname !== '$CUSTOM_DOMAIN_HOST') {\n    window.location.href = '$REDIRECT_URL';\n}\n</script>@" index.html.tmp
+fi
+
 # Use @ as delimiter to avoid issues with slashes and pipes in URLs
-sed -i.bak "s@let apiUrl = localStorage.getItem('apiUrl') || '';@let apiUrl = localStorage.getItem('apiUrl') || '$PUBLIC_API_URL';@" index.html.tmp
-sed -i.bak "s@let privateApiUrl = localStorage.getItem('privateApiUrl') || 'http://private-api.seasats.local:5000';@let privateApiUrl = localStorage.getItem('privateApiUrl') || '$PRIVATE_API_URL';@" index.html.tmp
-sed -i.bak "s@id=\"apiUrl\" placeholder=\"[^\"]*\" value=\"\">@id=\"apiUrl\" placeholder=\"http://your-alb-dns-name.region.elb.amazonaws.com\" value=\"$PUBLIC_API_URL\">@" index.html.tmp
-sed -i.bak "s@id=\"privateApiUrl\" placeholder=\"[^\"]*\" value=\"http://private-api.seasats.local:5000\">@id=\"privateApiUrl\" placeholder=\"http://private-api.seasats.local:5000\" value=\"$PRIVATE_API_URL\">@" index.html.tmp
+# Replace localStorage.getItem with hardcoded values and force them to be used
+sed -i.bak "s@let apiUrl = localStorage.getItem('apiUrl') || '';@let apiUrl = '$PUBLIC_API_URL'; // Hardcoded by deployment script@" index.html.tmp
+sed -i.bak "s@let privateApiUrl = localStorage.getItem('privateApiUrl') || 'http://private-api.seasats.local:5000';@let privateApiUrl = '$PRIVATE_API_URL'; // Hardcoded by deployment script@" index.html.tmp
+# Hide the entire configuration section
+sed -i.bak 's@<div class="config-section">@<div class="config-section" style="display: none;">@' index.html.tmp
+# Comment out the saveConfig function to prevent localStorage writes
+sed -i.bak "s@localStorage.setItem('apiUrl', apiUrl);@// localStorage.setItem('apiUrl', apiUrl); // Disabled - using deployment-time values@" index.html.tmp
+sed -i.bak "s@localStorage.setItem('privateApiUrl', privateApiUrl);@// localStorage.setItem('privateApiUrl', privateApiUrl); // Disabled - using deployment-time values@" index.html.tmp
 
 # Upload frontend files
 echo -e "${YELLOW}Uploading frontend files...${NC}"

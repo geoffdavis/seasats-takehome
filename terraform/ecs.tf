@@ -49,7 +49,7 @@ resource "aws_lb_target_group" "public_api" {
     healthy_threshold   = 2
     interval            = 30
     matcher             = "200"
-    path                = "/status"
+    path                = "/health"
     port                = "traffic-port"
     protocol            = "HTTP"
     timeout             = 5
@@ -59,7 +59,7 @@ resource "aws_lb_target_group" "public_api" {
   tags = local.common_tags
 }
 
-# Public ALB Listener
+# Public ALB Listener - HTTP
 resource "aws_lb_listener" "public" {
   load_balancer_arn = aws_lb.public.arn
   port              = "80"
@@ -69,6 +69,30 @@ resource "aws_lb_listener" "public" {
     type             = "forward"
     target_group_arn = aws_lb_target_group.public_api.arn
   }
+}
+
+# HTTP to HTTPS redirect rule (only for custom domain)
+resource "aws_lb_listener_rule" "redirect_http_to_https" {
+  listener_arn = aws_lb_listener.public.arn
+  priority     = 1
+
+  condition {
+    host_header {
+      values = ["seasats-api.${var.domain_name}"]
+    }
+  }
+
+  action {
+    type = "redirect"
+
+    redirect {
+      protocol    = "HTTPS"
+      port        = "443"
+      status_code = "HTTP_301"
+    }
+  }
+
+  depends_on = [aws_acm_certificate_validation.alb]
 }
 
 # ECS Task Definition for Public API
