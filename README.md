@@ -112,12 +112,33 @@ tofu output > ../outputs.txt
 ```
 
 **Important outputs:**
-- `public_api_url`: URL for accessing the public API
-- `frontend_url`: CloudFront URL for the dashboard
+- `public_api_url`: URL for accessing the public API (https://seasats-api.geoffdavis.com)
+- `frontend_url`: CloudFront URL for the dashboard (https://seasats.geoffdavis.com)
 - `vpn_server_public_ip`: VPN server IP address
 - `ecr_repository_url`: ECR repository for Docker images
 
-### Step 2: Build and Deploy API Container
+### Step 2: Configure Cloudflare API Token
+
+The infrastructure uses AWS ACM certificates validated via Cloudflare DNS. Set your Cloudflare API token:
+
+```bash
+# If using 1Password CLI
+export TF_VAR_cloudflare_api_token=$(op read "op://Automation/Cloudflare API Token/token")
+
+# Or set it directly
+export TF_VAR_cloudflare_api_token="your-cloudflare-api-token"
+
+# Or add it to terraform/terraform.tfvars
+echo 'cloudflare_api_token = "your-token-here"' >> terraform/terraform.tfvars
+```
+
+The deployment will:
+- Create ACM certificates for `seasats-api.geoffdavis.com` (ALB) and `seasats.geoffdavis.com` (CloudFront)
+- Add DNS validation records to Cloudflare automatically
+- Wait for certificate validation to complete
+- Create CNAME records pointing to AWS resources
+
+### Step 3: Build and Deploy API Container
 
 **Note:** The deployment script automatically detects and uses either Podman or Docker. You can also run these commands manually:
 
@@ -148,7 +169,7 @@ podman push $ECR_REPO:latest
 ./scripts/deploy.sh
 ```
 
-### Step 3: Update ECS Services
+### Step 4: Update ECS Services
 
 After pushing the container, ECS Fargate will automatically pull and deploy the new image. You may need to force a new deployment:
 
@@ -166,7 +187,7 @@ aws ecs update-service \
   --region us-east-1
 ```
 
-### Step 4: Retrieve VPN Configuration
+### Step 5: Retrieve VPN Configuration
 
 ```bash
 # Get VPN server IP from outputs
@@ -181,7 +202,7 @@ sudo cat /root/client.conf
 
 Copy the `client.conf` contents to your local machine and save it as `client.conf`.
 
-### Step 5: Connect to VPN
+### Step 6: Connect to VPN
 
 ```bash
 # Install WireGuard (if not already installed)
@@ -294,28 +315,24 @@ curl http://private-api.seasats.local:5000/secure-status
 
 ## Known Issues and Workarounds
 
-### 1. Browser Private Network Access (CORS)
-**Issue**: Modern browsers (Chrome, Edge) block requests from public websites to private IP addresses due to Private Network Access policy.
+### 1. Browser Private Network Access (CORS) and Secure Context
 
-**Solution**: The API includes `Access-Control-Allow-Private-Network: true` header to explicitly allow this access.
+**Issue**: Modern browsers (Chrome, Edge) block requests from public websites to private IP addresses due to Private Network Access policy, requiring HTTPS on the frontend.
 
-**Context**: The frontend (served from public S3/CloudFront) needs to access the private API (at `10.0.x.x`) when connected via VPN.
+**Solution**: The infrastructure now uses:
+- AWS ACM certificates for both ALB and CloudFront
+- Cloudflare DNS for automated certificate validation
+- Custom domains: `seasats-api.geoffdavis.com` (API) and `seasats.geoffdavis.com` (frontend)
+- HTTPS on all endpoints
+
+The API includes `Access-Control-Allow-Private-Network: true` header to allow the frontend to access the private API when connected via VPN.
 
 ### 2. macOS DNS Resolution for VPN
 **Issue**: Browsers on macOS don't respect WireGuard's DNS settings, so `private-api.seasats.local` doesn't resolve.
 
 **Solution**: The deployment script (`deploy-frontend.sh`) automatically resolves the private API IP and injects it directly into the frontend configuration, eliminating the need for DNS resolution in the browser.
 
-### 3. Mixed Content / HTTPS Redirect
-**Issue**: CloudFront serves content over HTTPS by default, but the ALB only supports HTTP, causing mixed content errors.
-
-**Workarounds**:
-- Use the S3 direct URL (shown in deployment output) which serves over HTTP only
-- CloudFront is configured with `viewer_protocol_policy = "allow-all"` but edge cache may take 10-15 minutes to propagate
-
-**Production Fix**: Add ACM certificate to ALB and enable HTTPS listener.
-
-### 4. ECS Container Architecture Mismatch
+### 3. ECS Container Architecture Mismatch
 **Issue**: Building containers on Apple Silicon (ARM64) creates images incompatible with Fargate (AMD64).
 
 **Solution**: The deployment script explicitly builds for `linux/amd64` platform:
@@ -323,7 +340,7 @@ curl http://private-api.seasats.local:5000/secure-status
 podman build --platform linux/amd64 -t seasats-api .
 ```
 
-### 5. VPN Server Security Group Configuration
+### 4. VPN Server Security Group Configuration
 **Issue**: Initial configuration used VPN client CIDR (`10.0.100.0/24`) in security group, but traffic appeared as NAT'd from VPN server IP.
 
 **Solution**: Changed private API security group to allow traffic from VPN server security group instead of CIDR block.
@@ -354,7 +371,6 @@ podman build --platform linux/amd64 -t seasats-api .
    - Add authentication (Cognito or API keys)
    - Secrets management via AWS Secrets Manager
    - Enable VPC Flow Logs
-   - Enable HTTPS on ALB with ACM certificate (currently HTTP only, causing mixed content errors when CloudFront serves over HTTPS)
 
 3. **Monitoring & Observability**:
    - CloudWatch dashboards and alarms
